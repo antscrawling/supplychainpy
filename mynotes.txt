@@ -1,0 +1,143 @@
+notes:
+program 4 is now working with correct balances.
+
+cpf_program4.py - V0.1 Working file.  with no interfaces, and mostly hard coded inputs.
+11-Apr-2025 - CPF Balances are now correct in every year.
+created the cpf_projection.json.  need to check the correctness of this account movement file.
+
+Missing features:
+1. Loan calculations.  the inputs are given monthly payments.
+2. Loan calculation requires the interest rate, and tenor
+3. The program only calculates the Basic Retirement Sum , nmissing are the 
+Enhanced Retirement Sum and Full Retirement Sum.
+4. Birthday is hard coded
+5. Salary is hard coded
+6. CPF Salary allocation rates are hard coded in a table.
+7. CPF Employee and Employer ratios are hard coded in a table.
+
+CPF - Central Provident Funds
+OA - Ordinary account
+SA - Special account
+MA - Medisave account
+RA - Retirement account
+
+
+# Configuration Parameters
+START_DATE = datetime(2025, 4, 1)
+END_DATE = datetime(2080, 7, 31)
+BIRTH_DATE = datetime(1974, 7, 6)
+OA_INTEREST_RATE_BELOW_55 = 2.5
+OA_INTEREST_RATE_ABOVE_55 = 4.0
+SA_INTEREST_RATE = 4.0
+MA_INTEREST_RATE = 4.0
+RA_INTEREST_RATE = 4.0
+EXTRA_INTEREST_BELOW_55 = 1.0
+EXTRA_INTEREST_FIRST_30K_ABOVE_55 = 2.0
+EXTRA_INTEREST_NEXT_30K_ABOVE_55 = 1.0
+BASIC_RETIREMENT_SUM = {'amount': 106_500, 'payout':930} (BRS)
+FULL_RETIREMENT_SUM = { 'amount':213_000, 'payout': 1_670} (FRS)
+ENHANCED_RETIREMENT_SUM = {'amount':426_000,'payout':3_300} (ERS)
+AGE_FOR_BRS_TRANSFER = {'age':55, 'month': BIRTH_DATE.month, 'year':2029} # birthday + 55 years 
+AGE_FOR_CPF_PAYOUT = 67 # start of the CPF Payouts until retirement amount is depleted.
+CPF_PAYOUT_AMOUNT_BRS= BASIC_RETIREMENT_SUM['payout']
+CPF_PAYOUT_AMOUNT_FRS= FULL_RETIREMENT_SUM['payout']
+CPF_PAYOUT_AMOUNT_ERS= ENHANCED_RETIREMENT_SUM['payout']
+CPF_PAYMENT_AMOUNT = BASIC_RETIREMENT_SUM['payout']
+SALARY_CAP = 7400
+SALARY_ALLOCATION_BELOW_55 = {"oa": 0.23, "sa": 0.06, "ma": 0.08}
+SALARY_ALLOCATION_ABOVE_55 = {"oa": 0.115, "ra": 0.105, "ma": 0.075}
+SALARY = 9200
+LOAN_PAYMENT_YEAR_1_2 = 1687.39
+LOAN_PAYMENT_YEAR_3 = 1782.27
+LOAN_PAYMENT_YEAR_4_BEYOND = 1817.49
+DATE_DICT_GENERATOR = MyDateDictGenerator()
+DATE_DICT = DATE_DICT_GENERATOR.get_date_dict(start_date=START_DATE, birth_date=BIRTH_DATE, end_date=END_DATE)
+# DATE_DICT = {'Apr-2025':{'age':50}}
+MONTH : int = 0
+CPF_CONTRIBUTION_RATES= {
+    "below_55" : {"employee": 0.20,  "employer": 0.17  },
+     "55_to_60": {"employee": 0.15,  "employer": 0.14  },
+     "60_to_65": {"employee": 0.09,  "employer": 0.10  },
+     "65_to_70": {"employee": 0.075, "employer": 0.085 },
+     "above_70": {"employee": 0.05,  "employer": 0.075 }
+}
+
+nice to have:
+
+Ordinary Account : Withdrawal Amount and Interest Accrued
+Special Account : Investment withdrawals
+
+
+------------
+
+version 5
+
+1. config_loader.py
+2. date_generator.py
+3. data_storage.py
+4. cpf_program5.py
+
+from config_loader_v2 import ConfigLoader
+from date_generator_v2 import generate_date_dict
+from data_saver_v2 import save_results
+
+-- 24-Apr-2025.
+Wrong program :
+run_cpf_simulation_v4
+Wrong program:
+run_cpf_simulation_v4
+
+-- 26 Apr 2025 programs.  to run start at run_cpf_simulation_v6.
+run_cpf_simulation_v7.py
+cpf_program_v9.py
+cpf_config.json
+cpf_data_saver_v2.py
+cpf_date_generator_v3.py
+cpf_date_utility_v2.py
+cpf_reconfigure_date_v2.py 
+
+
+
+
+
+
+
+docker build -t antscrawlingjay/cpf-program .
+docker run -p 8501:8501 antscrawlingjay/cpf-program
+
+==streamlit run main.py --server.headless true
+cd src && streamlit run main.py --server.headless true
+
+uv create -n newcpf_program -f environment.yml
+
+
+git commands
+
+1.  rm -rf .git
+2.  git init
+3.  git remote add origin https://github.com/antscrawling/cpf_program.git
+4.  git add . 
+    git commit -m "Initial commit - reinitialized from scratch" 
+
+
+
+step 1
+make docker-build
+step 2
+docker login
+make docker-push
+
+step 3 
+# Using docker run
+docker pull antscrawlingjay/cpf-program:latest
+docker run -d --name cpf-program -p 8501:8501 antscrawlingjay/cpf-program:latest
+
+# Or using docker-compose
+
+step 4
+docker compose up -d
+------------------------
+
+step 5 
+docker ps
+docker logs cpf-program

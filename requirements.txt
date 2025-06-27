@@ -1,0 +1,17 @@
+# Core dependencies for Supply Chain Finance Application
+typing-extensions>=4.0.0
+
+# Development dependencies (optional)
+black>=23.0.0
+flake8>=6.0.0
+pytest>=7.0.0
+sqlite3
+
+# Note: Python standard library modules used in this project:
+# - sqlite3 (built-in)
+# - hashlib (built-in)
+# - datetime (built-in)
+# - uuid (built-in)
+# - enum (built-in)
+# - dataclasses (built-in)
+# - typing (built-in)

@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  supplychainpy:
+    image: antscrawlingjay/supplychainpy:latest
+    container_name: supplychainpy
+    build:
+      context: .
+      dockerfile: Dockerfile
+    stdin_open: true  # Keep STDIN open for interactive application
+    tty: true         # Allocate a pseudo-TTY for interactive application
+    volumes:
+      - ./src:/app/src  # Mount source code for development
+      - ./data:/app/data  # Persist database and data files
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/src'); import sqlite3; sqlite3.connect('/app/src/supply_chain_finance.db').close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Database backup service
+  db-backup:
+    image: alpine:latest
+    container_name: supplychainpy-backup
+    volumes:
+      - ./src:/src
+      - ./backups:/backups
+    command: >
+      sh -c "
+        while true; do
+          echo 'Creating database backup...'
+          if [ -f /src/supply_chain_finance.db ]; then
+            cp /src/supply_chain_finance.db /backups/supply_chain_finance_$(date +%Y%m%d_%H%M%S).db
+            echo 'Backup created successfully'
+          else
+            echo 'No database file found to backup'
+          fi
+          sleep 86400  # Backup every 24 hours
+        done
+      "
+    depends_on:
+      - supplychainpy
+    restart: unless-stopped
+    profiles:
+      - backup  # Only start with --profile backup
+
+volumes:
+  db-data:
+    driver: local
