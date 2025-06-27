@@ -488,11 +488,56 @@ class ClientPortal:
         
         try:
             org_name = self.current_organization.get('name', 'Unknown')
+            org_id = self.current_organization.get('id')
+            
+            if not org_id:
+                print("Organization ID not found.")
+                input("\nPress Enter to continue...")
+                return
+            
+            db = Database()
+            
+            # Get credit facilities for current organization
+            query = """
+                SELECT f.Type, f.TotalLimit, f.CurrentUtilization 
+                FROM Facilities f 
+                JOIN CreditLimits cl ON f.CreditLimitInfoId = cl.Id
+                WHERE cl.OrganizationId = ?
+            """
+            db.cursor.execute(query, (org_id,))
+            facilities = db.cursor.fetchall()
+            
             print(f"Organization: {org_name}")
-            print(f"Total Credit Limit: $50,000.00")
-            print(f"Used Credit: $15,750.00")
-            print(f"Available Credit: $34,250.00")
-            print(f"Credit Utilization: 31.5%")
+            print()
+            
+            if not facilities:
+                print("No credit facilities found for your organization.")
+            else:
+                total_limit = 0.0
+                total_utilized = 0.0
+                
+                print(f"{'Facility Type':<20} {'Total Limit':<15} {'Used':<15} {'Available':<15} {'Utilization':<12}")
+                print("-" * 85)
+                
+                for facility in facilities:
+                    facility_type = "Invoice Finance" if facility[0] == 0 else f"Type {facility[0]}"
+                    limit_amount = float(facility[1]) if facility[1] else 0.0
+                    utilized_amount = float(facility[2]) if facility[2] else 0.0
+                    available_amount = limit_amount - utilized_amount
+                    utilization_pct = (utilized_amount / limit_amount * 100) if limit_amount > 0 else 0
+                    
+                    total_limit += limit_amount
+                    total_utilized += utilized_amount
+                    
+                    print(f"{facility_type:<20} ${limit_amount:<14,.0f} ${utilized_amount:<14,.0f} ${available_amount:<14,.0f} {utilization_pct:<11.1f}%")
+                
+                if len(facilities) > 1:
+                    print("-" * 85)
+                    total_available = total_limit - total_utilized
+                    total_utilization_pct = (total_utilized / total_limit * 100) if total_limit > 0 else 0
+                    print(f"{'TOTAL':<20} ${total_limit:<14,.0f} ${total_utilized:<14,.0f} ${total_available:<14,.0f} {total_utilization_pct:<11.1f}%")
+            
+            db.close()
             
         except Exception as e:
             print(f"Error fetching credit limits: {e}")

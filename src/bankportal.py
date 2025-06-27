@@ -330,11 +330,12 @@ class BankApplication:
             
             # Get all credit facilities with organization info
             query = """
-                SELECT o.Name, cf.FacilityType, cf.Limit, cf.UtilizedAmount, cf.IsActive,
-                       cf.CreatedDate, o.Id as OrgId
-                FROM CreditFacilities cf
-                JOIN Organizations o ON cf.OrganizationId = o.Id
-                ORDER BY o.Name, cf.FacilityType
+                SELECT o.Name, f.Type, f.TotalLimit, f.CurrentUtilization, 1 as IsActive,
+                       cl.LastReviewDate, o.Id as OrgId
+                FROM Facilities f
+                JOIN CreditLimits cl ON f.CreditLimitInfoId = cl.Id
+                JOIN Organizations o ON cl.OrganizationId = o.Id
+                ORDER BY o.Name, f.Type
             """
             
             db.cursor.execute(query)
@@ -722,11 +723,37 @@ class BankApplication:
         
         print("Approved Invoices Ready for Funding:")
         for i, invoice in enumerate(approved_invoices, 1):
-            print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
-                  f"Seller: {invoice.get('seller_name', 'Unknown')} | "
-                  f"Buyer: {invoice.get('buyer_name', 'Unknown')}")
+            # Determine which party is our customer based on credit facilities
+            seller_name = invoice.get('seller_name', 'Unknown')
+            buyer_name = invoice.get('buyer_name', 'Unknown')
+            
+            # Check if seller is our customer (has credit facilities)
+            seller_is_customer = self.is_organization_our_customer(invoice.get('seller_id'))
+            buyer_is_customer = self.is_organization_our_customer(invoice.get('buyer_id'))
+            
+            if seller_is_customer and not buyer_is_customer:
+                # Seller is our customer - traditional invoice financing
+                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
+                      f"Seller (OUR CUSTOMER): {seller_name} | Buyer: {buyer_name}")
+                print(f"   → We credit {seller_name}'s account after funding")
+            elif buyer_is_customer and not seller_is_customer:
+                # Buyer is our customer - buyer-led supply chain finance
+                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
+                      f"Buyer (OUR CUSTOMER): {buyer_name} | Seller: {seller_name}")
+                print(f"   → {buyer_name} uploaded invoice, {seller_name} decides on early payment discount")
+                print(f"   → If approved: Bank pays {seller_name} (external vendor), {buyer_name} pays bank at maturity")
+            elif seller_is_customer and buyer_is_customer:
+                # Both are our customers
+                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
+                      f"Seller (OUR CUSTOMER): {seller_name} | Buyer (OUR CUSTOMER): {buyer_name}")
+                print(f"   → Both parties are our customers")
+            else:
+                # Neither is our customer (shouldn't happen in normal business)
+                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
+                      f"Seller: {seller_name} | Buyer: {buyer_name}")
+                print(f"   → WARNING: Neither party appears to be our customer")
         
-        print("0. Back")
+        print("\n0. Back")
         
         selection = input(f"\nSelect invoice to fund (1-{len(approved_invoices)} or 0): ").strip()
         
@@ -752,10 +779,31 @@ class BankApplication:
         print("=" * (13 + len(invoice['number'])))
         print()
         
+        # Determine financing type
+        seller_name = invoice.get('seller_name', 'Unknown')
+        buyer_name = invoice.get('buyer_name', 'Unknown')
+        seller_is_customer = self.is_organization_our_customer(invoice.get('seller_id'))
+        buyer_is_customer = self.is_organization_our_customer(invoice.get('buyer_id'))
+        
         print(f"Invoice Number: {invoice['number']}")
         print(f"Amount: ${invoice['amount']:,.2f}")
-        print(f"Seller: {invoice.get('seller_name', 'Unknown')}")
-        print(f"Buyer: {invoice.get('buyer_name', 'Unknown')}")
+        print(f"Seller: {seller_name}")
+        print(f"Buyer: {buyer_name}")
+        
+        # Show financing type
+        if seller_is_customer and not buyer_is_customer:
+            print(f"\nFINANCING TYPE: Traditional Invoice Financing")
+            print(f"• {seller_name} is our customer - we credit their account")
+            print(f"• {buyer_name} will pay us at maturity")
+        elif buyer_is_customer and not seller_is_customer:
+            print(f"\nFINANCING TYPE: Buyer-Led Supply Chain Finance")
+            print(f"• {buyer_name} is our customer (uploaded invoice)")
+            print(f"• {seller_name} (external vendor) decides on early payment")
+            print(f"• We pay {seller_name} if approved, {buyer_name} pays us at maturity")
+        elif seller_is_customer and buyer_is_customer:
+            print(f"\nFINANCING TYPE: Both Parties Are Our Customers")
+        else:
+            print(f"\nWARNING: Neither party appears to be our customer")
         
         print("\nPlease enter the funding details:")
         
@@ -779,8 +827,16 @@ class BankApplication:
             print(f"\nFinal Discount Rate: {final_rate:.2f}%")
             print(f"Invoice Face Value: ${invoice['amount']:,.2f}")
             print(f"Discount Amount: ${discount_amount:,.2f} (deducted from face value)")
-            print(f"Amount to be Credited to Seller: ${funded_amount:,.2f}")
-            print(f"Buyer will pay full face value of ${invoice['amount']:,.2f} at maturity")
+            
+            if seller_is_customer and not buyer_is_customer:
+                print(f"Amount to be Credited to {seller_name} (Our Customer): ${funded_amount:,.2f}")
+                print(f"{buyer_name} will pay us ${invoice['amount']:,.2f} at maturity")
+            elif buyer_is_customer and not seller_is_customer:
+                print(f"Amount to be Paid to {seller_name} (External Vendor): ${funded_amount:,.2f}")
+                print(f"{buyer_name} (Our Customer) will pay us ${invoice['amount']:,.2f} at maturity")
+            else:
+                print(f"Amount to be Credited to Seller: ${funded_amount:,.2f}")
+                print(f"Buyer will pay full face value of ${invoice['amount']:,.2f} at maturity")
             
             confirm = input("\nConfirm funding (Y/N)? ").strip().upper()
             
@@ -1344,7 +1400,7 @@ class BankApplication:
             
             query = """
                 SELECT i.Id, i.InvoiceNumber, i.Amount, i.Description, i.IssueDate, i.DueDate,
-                       seller.Name as SellerName, buyer.Name as BuyerName, i.Status
+                       seller.Name as SellerName, buyer.Name as BuyerName, i.Status, i.SellerId, i.BuyerId
                 FROM Invoices i
                 LEFT JOIN Organizations seller ON i.SellerId = seller.Id
                 LEFT JOIN Organizations buyer ON i.BuyerId = buyer.Id
@@ -1367,7 +1423,9 @@ class BankApplication:
                     'due_date': row[5],
                     'seller_name': row[6],
                     'buyer_name': row[7],
-                    'status': row[8]
+                    'status': row[8],
+                    'seller_id': row[9],
+                    'buyer_id': row[10]
                 })
             
             return invoices
@@ -1488,9 +1546,10 @@ class BankApplication:
             
             # Get current facility info
             query = """
-                SELECT cf.Id, cf.Limit, cf.UtilizedAmount 
-                FROM CreditFacilities cf 
-                WHERE cf.OrganizationId = ? AND cf.IsActive = 1
+                SELECT f.Id, f.TotalLimit, f.CurrentUtilization 
+                FROM Facilities f 
+                JOIN CreditLimits cl ON f.CreditLimitInfoId = cl.Id
+                WHERE cl.OrganizationId = ?
             """
             db.cursor.execute(query, (organization_id,))
             facility = db.cursor.fetchone()
@@ -1516,7 +1575,7 @@ class BankApplication:
                 new_utilization = max(0, current_utilization - amount)
             
             # Update utilization
-            update_query = "UPDATE CreditFacilities SET UtilizedAmount = ? WHERE Id = ?"
+            update_query = "UPDATE Facilities SET CurrentUtilization = ? WHERE Id = ?"
             db.cursor.execute(update_query, (str(new_utilization), facility_id))
             db.connection.commit()
             
@@ -1536,9 +1595,10 @@ class BankApplication:
             db = Database()
             
             query = """
-                SELECT cf.Limit, cf.UtilizedAmount 
-                FROM CreditFacilities cf 
-                WHERE cf.OrganizationId = ? AND cf.IsActive = 1
+                SELECT f.TotalLimit, f.CurrentUtilization 
+                FROM Facilities f 
+                JOIN CreditLimits cl ON f.CreditLimitInfoId = cl.Id
+                WHERE cl.OrganizationId = ?
             """
             db.cursor.execute(query, (organization_id,))
             facility = db.cursor.fetchone()
@@ -1556,6 +1616,31 @@ class BankApplication:
             
         except Exception as e:
             print(f"Error checking credit availability: {e}")
+            return False
+
+    def is_organization_our_customer(self, org_id: int) -> bool:
+        """Check if an organization is our customer by checking if they have credit facilities"""
+        if not org_id:
+            return False
+            
+        try:
+            db = Database()
+            
+            # Check if organization has any credit facilities
+            query = """
+                SELECT COUNT(*) 
+                FROM Facilities f 
+                JOIN CreditLimits cl ON f.CreditLimitInfoId = cl.Id
+                WHERE cl.OrganizationId = ?
+            """
+            db.cursor.execute(query, (org_id,))
+            result = db.cursor.fetchone()
+            db.close()
+            
+            return result and result[0] > 0
+            
+        except Exception as e:
+            print(f"Error checking customer status: {e}")
             return False
 
 def main():
