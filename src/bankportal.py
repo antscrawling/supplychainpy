@@ -289,6 +289,152 @@ class BankApplication:
         print(f"\nAdding credit facility to organization {org_id}")
         print("This feature is under development.")
 
+    def create_facility_for_organization(self, org_id: int, org_name: str):
+        """Create credit facility for an organization"""
+        self.clear_screen()
+        print(f"CREATE CREDIT FACILITY FOR: {org_name}")
+        print("=" * (27 + len(org_name)))
+        print()
+        
+        try:
+            # Check if organization already has credit limits
+            db = Database()
+            check_query = "SELECT COUNT(*) FROM CreditLimits WHERE OrganizationId = ?"
+            db.cursor.execute(check_query, (org_id,))
+            existing_limits = db.cursor.fetchone()[0]
+            
+            if existing_limits > 0:
+                print(f"Organization {org_name} already has credit limits.")
+                print("Use 'Manage Buyer-Specific Limits' to modify existing facilities.")
+                db.close()
+                self.wait_for_enter()
+                return
+            
+            # Get facility details
+            print("Enter Credit Facility Details:")
+            print("-" * 30)
+            
+            master_limit = input("Master Credit Limit ($): ").strip()
+            if not master_limit:
+                print("Master limit is required.")
+                db.close()
+                self.wait_for_enter()
+                return
+            
+            try:
+                master_limit_amount = float(master_limit)
+                if master_limit_amount <= 0:
+                    print("Invalid master limit amount.")
+                    db.close()
+                    self.wait_for_enter()
+                    return
+            except ValueError:
+                print("Invalid master limit format.")
+                db.close()
+                self.wait_for_enter()
+                return
+            
+            # Create CreditLimits record
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            credit_limit_query = """
+                INSERT INTO CreditLimits (OrganizationId, MasterLimit, LastReviewDate, NextReviewDate)
+                VALUES (?, ?, ?, ?)
+            """
+            
+            # Set next review date to 1 year from now
+            from datetime import datetime, timedelta
+            next_review = (datetime.now() + timedelta(days=365)).strftime('%Y-%m-%d %H:%M:%S')
+            
+            db.cursor.execute(credit_limit_query, (
+                org_id,
+                str(master_limit_amount),
+                timestamp,
+                next_review
+            ))
+            
+            credit_limit_id = db.cursor.lastrowid
+            
+            print(f"\nMaster Credit Limit: ${master_limit_amount:,.2f}")
+            print("\nNow create individual facilities under this master limit:")
+            print("1. Invoice Finance Facility")
+            print("2. Trade Finance Facility") 
+            print("3. Working Capital Facility")
+            print("4. Supply Chain Finance Facility")
+            
+            facility_types = input("\nEnter facility types to create (comma-separated, e.g., 1,4): ").strip()
+            
+            if not facility_types:
+                facility_types = "1"  # Default to Invoice Finance
+            
+            types_to_create = [int(t.strip()) for t in facility_types.split(",") if t.strip().isdigit()]
+            
+            total_allocated = 0.0
+            
+            for facility_type in types_to_create:
+                if facility_type < 1 or facility_type > 4:
+                    print(f"Skipping invalid facility type: {facility_type}")
+                    continue
+                
+                facility_name = ["Invoice Finance", "Trade Finance", "Working Capital", "Supply Chain Finance"][facility_type - 1]
+                print(f"\n{facility_name} Facility:")
+                
+                limit_input = input(f"  Allocated Limit ($): ").strip()
+                try:
+                    facility_limit = float(limit_input)
+                    if facility_limit <= 0:
+                        print(f"  Skipping {facility_name} - invalid amount")
+                        continue
+                    
+                    if total_allocated + facility_limit > master_limit_amount:
+                        print(f"  Error: Total allocated (${total_allocated + facility_limit:,.2f}) exceeds master limit (${master_limit_amount:,.2f})")
+                        continue
+                    
+                    # Create Facilities record
+                    facility_query = """
+                        INSERT INTO Facilities (CreditLimitInfoId, Type, TotalLimit, CurrentUtilization, 
+                                              ReviewEndDate, GracePeriodDays, AllocatedLimit)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                    
+                    db.cursor.execute(facility_query, (
+                        credit_limit_id,
+                        facility_type - 1,  # 0-based indexing for Type
+                        str(facility_limit),
+                        "0.0",  # Initial utilization
+                        next_review,
+                        30,  # 30 days grace period
+                        str(facility_limit)
+                    ))
+                    
+                    total_allocated += facility_limit
+                    print(f"  ✓ {facility_name} facility created: ${facility_limit:,.2f}")
+                    
+                except ValueError:
+                    print(f"  Skipping {facility_name} - invalid amount format")
+                    continue
+            
+            db.connection.commit()
+            db.close()
+            
+            print(f"\n" + "=" * 50)
+            print("CREDIT FACILITY CREATION SUMMARY")
+            print("=" * 50)
+            print(f"Organization: {org_name}")
+            print(f"Master Limit: ${master_limit_amount:,.2f}")
+            print(f"Total Allocated: ${total_allocated:,.2f}")
+            print(f"Available Unallocated: ${master_limit_amount - total_allocated:,.2f}")
+            print(f"Facilities Created: {len([t for t in types_to_create if 1 <= t <= 4])}")
+            print(f"Next Review Date: {next_review[:10]}")
+            print("\nCredit facility setup completed successfully!")
+            
+        except Exception as e:
+            print(f"Error creating credit facility: {e}")
+            if 'db' in locals():
+                db.close()
+        
+        self.wait_for_enter()
+
     def manage_credit_facilities(self):
         """Manage credit facilities"""
         self.clear_screen()
@@ -383,15 +529,121 @@ class BankApplication:
 
     def grant_facility_to_customer(self):
         """Grant facility to any customer"""
-        print("\nGrant Facility to Customer")
-        print("This feature is under development.")
-        self.wait_for_enter()
+        self.clear_screen()
+        print("GRANT CREDIT FACILITY TO CUSTOMER")
+        print("=" * 33)
+        print()
+        
+        try:
+            # Get all non-bank organizations
+            organizations = self.get_organizations()
+            
+            if not organizations:
+                print("No customer organizations found.")
+                self.wait_for_enter()
+                return
+            
+            print("Available Organizations:")
+            for org in organizations:
+                org_type = []
+                if org.get('is_buyer', False):
+                    org_type.append("Buyer")
+                if org.get('is_seller', False):
+                    org_type.append("Seller")
+                type_str = " & ".join(org_type) if org_type else "Unknown"
+                
+                # Check if they already have facilities
+                has_facility = self.is_organization_our_customer(org['id'])
+                status = " (HAS FACILITIES)" if has_facility else " (NO FACILITIES)"
+                
+                print(f"{org['id']:3d}. {org['name']:30} ({type_str}){status}")
+            
+            print("\n0. Back to Credit Facilities Menu")
+            
+            org_id = input("\nEnter Organization ID to grant facility: ").strip()
+            
+            if org_id == "0":
+                return
+                
+            try:
+                org_id = int(org_id)
+                org = next((o for o in organizations if o['id'] == org_id), None)
+                if not org:
+                    print("\nOrganization not found.")
+                    self.wait_for_enter()
+                    return
+                
+                self.create_facility_for_organization(org_id, org['name'])
+                
+            except ValueError:
+                print("\nInvalid ID format.")
+                self.wait_for_enter()
+                
+        except Exception as e:
+            print(f"Error granting facility: {e}")
+            self.wait_for_enter()
 
     def manage_buyer_limits(self):
         """Manage buyer-specific limits"""
-        print("\nManage Buyer Limits")
-        print("This feature is under development.")
-        self.wait_for_enter()
+        self.clear_screen()
+        print("MANAGE BUYER-SPECIFIC LIMITS")
+        print("=" * 27)
+        print()
+        
+        try:
+            # Get organizations with existing credit facilities
+            db = Database()
+            query = """
+                SELECT DISTINCT o.Id, o.Name, o.IsBuyer, o.IsSeller
+                FROM Organizations o
+                JOIN CreditLimits cl ON o.Id = cl.OrganizationId
+                WHERE o.IsBank = 0
+                ORDER BY o.Name
+            """
+            db.cursor.execute(query)
+            organizations = db.cursor.fetchall()
+            db.close()
+            
+            if not organizations:
+                print("No organizations with credit facilities found.")
+                print("Use 'Grant Facility to Any Customer' to create facilities first.")
+                self.wait_for_enter()
+                return
+            
+            print("Organizations with Credit Facilities:")
+            for i, org in enumerate(organizations, 1):
+                org_type = []
+                if org[2]:  # IsBuyer
+                    org_type.append("Buyer")
+                if org[3]:  # IsSeller
+                    org_type.append("Seller")
+                type_str = " & ".join(org_type) if org_type else "Unknown"
+                print(f"{org[0]:3d}. {org[1]:30} ({type_str})")
+            
+            print("\n0. Back to Credit Facilities Menu")
+            
+            org_id = input("\nEnter Organization ID to manage: ").strip()
+            
+            if org_id == "0":
+                return
+                
+            try:
+                org_id = int(org_id)
+                org = next((o for o in organizations if o[0] == org_id), None)
+                if not org:
+                    print("\nOrganization not found or no facilities exist.")
+                    self.wait_for_enter()
+                    return
+                
+                self.manage_organization_limits(org_id, org[1])
+                
+            except ValueError:
+                print("\nInvalid ID format.")
+                self.wait_for_enter()
+                
+        except Exception as e:
+            print(f"Error managing buyer limits: {e}")
+            self.wait_for_enter()
 
     def launch_grant_buyer_limit(self):
         """Launch grant buyer limit program"""

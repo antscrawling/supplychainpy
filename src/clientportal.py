@@ -389,20 +389,20 @@ class ClientPortal:
                 description = input("Description: ").strip()
                 
                 # Get invoice start date (issue date)
-                issue_date = input("Invoice Issue Date (YYYY-MM-DD): ").strip()
+                issue_date = input("Invoice Issue Date (DD-MM-YYYY): ").strip()
                 try:
-                    issue_date_obj = datetime.strptime(issue_date, '%Y-%m-%d')
+                    issue_date_obj = datetime.strptime(issue_date, '%d-%m-%Y')
                 except ValueError:
-                    print("Invalid issue date format. Please use YYYY-MM-DD.")
+                    print("Invalid issue date format. Please use DD-MM-YYYY.")
                     input("\nPress Enter to continue...")
                     return
                 
                 # Get due date
-                due_date = input("Due Date (YYYY-MM-DD): ").strip()
+                due_date = input("Due Date (DD-MM-YYYY): ").strip()
                 try:
-                    due_date_obj = datetime.strptime(due_date, '%Y-%m-%d')
+                    due_date_obj = datetime.strptime(due_date, '%d-%m-%Y')
                 except ValueError:
-                    print("Invalid due date format. Please use YYYY-MM-DD.")
+                    print("Invalid due date format. Please use DD-MM-YYYY.")
                     input("\nPress Enter to continue...")
                     return
                 
@@ -433,7 +433,8 @@ class ClientPortal:
                     'amount': amount,
                     'description': description,
                     'seller_id': selected_seller['id'],
-                    'buyer_id': self.current_organization['id']
+                    'buyer_id': self.current_organization['id'],
+                    'counterparty_id': selected_seller['id']  # seller is counterparty
                 }):
                     print("\nInvoice uploaded successfully!")
                 else:
@@ -675,7 +676,7 @@ class ClientPortal:
             query = """
                 INSERT INTO Invoices (
                     InvoiceNumber, IssueDate, DueDate, Amount, Description,
-                    SellerId, BuyerId, Currency, Status, BuyerApproved, SellerAccepted
+                    SellerId, BuyerId, Counterpartyid, Currency, Status, BuyerApproved, SellerAccepted
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
@@ -687,7 +688,8 @@ class ClientPortal:
                 str(invoice_data['amount']),  # Amount stored as TEXT in schema
                 invoice_data['description'],
                 invoice_data['seller_id'],
-                invoice_data['buyer_id'],
+                invoice_data.get('buyer_id', None),  # Optional buyer ID
+                invoice_data.get('counterparty_id', None),  # Optional counterparty ID
                 'USD',  # Default currency
                 0,  # Status: Pending
                 0,  # BuyerApproved: False
