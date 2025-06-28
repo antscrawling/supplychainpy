@@ -658,10 +658,10 @@ class BankApplication:
         print("=" * 14)
         print()
         
-        print("1. Review New Invoices (Seller Uploaded)")
+        print("1. Review New Invoices ")
         print("2. Review Validated Invoices")
-        print("3. Review Buyer Uploaded Invoices")
-        print("4. Review Approval Pending")
+      #  print("3. Review Buyer Uploaded Invoices")
+     #   print("4. Review Approval Pending")
         print("0. Back to Main Menu")
         
         choice = input("\nSelect an option: ").strip()
@@ -670,10 +670,10 @@ class BankApplication:
             self.review_invoices_by_status("uploaded", "New Invoices")
         elif choice == "2":
             self.review_invoices_by_status("validated", "Validated Invoices")
-        elif choice == "3":
-            self.review_invoices_by_status("buyer_uploaded", "Buyer Uploaded")
-        elif choice == "4":
-            self.review_invoices_by_status("approval_pending", "Approval Pending")
+     #  elif choice == "3":
+     #      self.review_invoices_by_status("buyer_uploaded", "Buyer Uploaded")
+     #  elif choice == "4":
+     #      self.review_invoices_by_status("approval_pending", "Approval Pending")
         elif choice == "0":
             return
         else:
@@ -698,8 +698,14 @@ class BankApplication:
         for i, invoice in enumerate(invoices, 1):
             print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
                   f"Seller: {invoice.get('seller_name', 'Unknown')} | "
-                  f"Buyer: {invoice.get('buyer_name', 'Unknown')}")
-        
+                  f"Buyer: {invoice.get('buyer_name', 'Unknown')}.  | "
+                  f"Counterparty : {invoice.get('counterparty_name', 'Unknown')}")
+            # If counterparty = seller, then buyer uploaded the invoice (seller is the counterparty from buyer's perspective)
+            # If counterparty = buyer, then seller uploaded the invoice (buyer is the counterparty from seller's perspective)
+            if invoice.get('seller_name', None) == invoice.get('counterparty_name', None):
+                print(f"   → Buyer Uploaded (counterparty: {invoice.get('counterparty_name', 'Unknown')})")
+            else:
+                print(f"   → Seller Uploaded (counterparty: {invoice.get('counterparty_name', 'Unknown')})")
         print("0. Back")
         
         selection = input(f"\nSelect invoice to review (1-{len(invoices)} or 0): ").strip()
@@ -746,13 +752,14 @@ class BankApplication:
         print(f"Seller: {invoice.get('seller_name', 'Unknown')}")
         print(f"Buyer: {invoice.get('buyer_name', 'Unknown')}")
         print(f"Status: {invoice.get('status', 'Unknown')}")
+        print(f"Counterparty : {invoice.get('counterparty_name', 'Unknown')}")
         
         print("\nAvailable Actions:")
         print("1. Validate Invoice")
         print("2. Approve for Funding")
-        print("3. Request Buyer Approval")
-        print("4. Make Early Payment Offer")
-        print("5. Reject Invoice")
+       # print("3. Request Seller Approval (if Buyer uploaded)" )
+       # print("4. Make Early Payment Offer")
+        print("3. Reject Invoice")
         print("0. Back")
         
         choice = input("\nSelect action: ").strip()
@@ -761,11 +768,11 @@ class BankApplication:
             self.validate_invoice(invoice)
         elif choice == "2":
             self.approve_invoice(invoice)
+        #elif choice == "3":
+        #    self.request_buyer_approval(invoice)
+        #elif choice == "4":
+        #    self.make_early_payment_offer(invoice)
         elif choice == "3":
-            self.request_buyer_approval(invoice)
-        elif choice == "4":
-            self.make_early_payment_offer(invoice)
-        elif choice == "5":
             self.reject_invoice(invoice)
         elif choice == "0":
             return
@@ -988,17 +995,55 @@ class BankApplication:
                 print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
                       f"Seller (OUR CUSTOMER): {seller_name} | Buyer: {buyer_name}")
                 print(f"   → We credit {seller_name}'s account after funding")
+                #send notificcation to seller that invoice is successfully funded
+                
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
             elif buyer_is_customer and not seller_is_customer:
                 # Buyer is our customer - buyer-led supply chain finance
                 print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
                       f"Buyer (OUR CUSTOMER): {buyer_name} | Seller: {seller_name}")
                 print(f"   → {buyer_name} uploaded invoice, {seller_name} decides on early payment discount")
                 print(f"   → If approved: Bank pays {seller_name} (external vendor), {buyer_name} pays bank at maturity")
-            elif seller_is_customer and buyer_is_customer:
-                # Both are our customers
-                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
-                      f"Seller (OUR CUSTOMER): {seller_name} | Buyer (OUR CUSTOMER): {buyer_name}")
-                print(f"   → Both parties are our customers")
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+                   
+                 
+                    
+                    
+                    
+                    
+                    
+                   
+                   
+                   
+                   
+            
+        
+        
+        
+        
+        
             else:
                 # Neither is our customer (shouldn't happen in normal business)
                 print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
@@ -1124,6 +1169,19 @@ class BankApplication:
                         
                         print("\nFunding processed successfully!")
                         print("Invoice status updated to 'Funded'")
+                        #if buyer uploaded send notification with ActionRequired=True (for approval)
+                        stakeholders = self.get_invoice_stakeholders(invoice['id'])
+                        if invoice.get('seller_name', None) == invoice.get('counterparty_name', None):
+                            # Seller uploaded, no action required
+                            if stakeholders.get('seller_user_id'):
+                                message = f"Invoice {invoice['number']} has been funded and ${funded_amount:,.2f} has been credited to your account."
+                                self.send_notification(stakeholders['seller_user_id'], message, invoice['id'], "Invoice Funded", "Success", False)
+                        else:
+                            # Buyer uploaded, seller needs to approve/acknowledge
+                            if stakeholders.get('seller_user_id'):
+                                message = f"Invoice {invoice['number']} has been funded. Please acknowledge receipt of funds (${funded_amount:,.2f})."
+                                self.send_notification(stakeholders['seller_user_id'], message, invoice['id'], "Action Required: Acknowledge Funding", "Action", True)
+                        #if seller uploaded send notification with ActionRequired=False 
                         
                         # Update credit utilization for both seller and buyer
                         if self.update_credit_utilization(seller_org_id, invoice['amount'], True):
@@ -1652,10 +1710,12 @@ class BankApplication:
             
             query = """
                 SELECT i.Id, i.InvoiceNumber, i.Amount, i.Description, i.IssueDate, i.DueDate,
-                       seller.Name as SellerName, buyer.Name as BuyerName, i.Status, i.SellerId, i.BuyerId
+                       seller.Name as SellerName, buyer.Name as BuyerName, i.Status, i.SellerId, i.BuyerId, 
+                       i.CounterpartyId, counterparty.Name as CounterpartyName
                 FROM Invoices i
                 LEFT JOIN Organizations seller ON i.SellerId = seller.Id
                 LEFT JOIN Organizations buyer ON i.BuyerId = buyer.Id
+                LEFT JOIN Organizations counterparty ON i.CounterpartyId = counterparty.Id
                 WHERE i.Status = ?
                 ORDER BY i.IssueDate DESC
             """
@@ -1666,6 +1726,14 @@ class BankApplication:
             
             invoices = []
             for row in results:
+                # Use counterparty name from database, or determine based on business logic
+                counterparty_name = row[12] if row[12] else "Unknown"
+                
+                # If CounterpartyId is null, we can infer based on business rules
+                # For now, let's use the seller as default counterparty (seller uploaded)
+                if not counterparty_name or counterparty_name == "Unknown":
+                    counterparty_name = row[6]  # Default to seller name
+                
                 invoices.append({
                     'id': row[0],
                     'number': row[1],
@@ -1677,7 +1745,8 @@ class BankApplication:
                     'buyer_name': row[7],
                     'status': row[8],
                     'seller_id': row[9],
-                    'buyer_id': row[10]
+                    'buyer_id': row[10],
+                    'counterparty_name': counterparty_name
                 })
             
             return invoices

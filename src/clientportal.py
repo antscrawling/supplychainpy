@@ -145,8 +145,8 @@ class ClientPortal:
             query = """
                 INSERT INTO Invoices (
                     InvoiceNumber, IssueDate, DueDate, Amount, Description,
-                    SellerId, BuyerId, Currency, Status, BuyerApproved, SellerAccepted
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    SellerId, BuyerId, CounterpartyId, Currency, Status, BuyerApproved, SellerAccepted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
             # Status: 0=Pending, 1=Approved, 2=Funded, 3=Paid, 4=Rejected
@@ -158,6 +158,7 @@ class ClientPortal:
                 invoice_data['description'],
                 invoice_data['seller_id'],
                 invoice_data['buyer_id'],
+                invoice_data.get('counterparty_id', None),  # Set counterparty properly
                 'USD',  # Default currency
                 0,  # Status: Pending
                 0,  # BuyerApproved: False
@@ -329,7 +330,8 @@ class ClientPortal:
                     'amount': amount,
                     'description': description,
                     'seller_id': self.current_organization['id'],
-                    'buyer_id': selected_buyer['id']
+                    'buyer_id': selected_buyer['id'],
+                    'counterparty_id': selected_buyer['id']  # buyer is counterparty when seller uploads
                 }):
                     print("\nInvoice uploaded successfully!")
                 else:
@@ -676,8 +678,8 @@ class ClientPortal:
             query = """
                 INSERT INTO Invoices (
                     InvoiceNumber, IssueDate, DueDate, Amount, Description,
-                    SellerId, BuyerId, Counterpartyid, Currency, Status, BuyerApproved, SellerAccepted
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    SellerId, BuyerId, CounterpartyId, Currency, Status, BuyerApproved, SellerAccepted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
             # Status: 0=Pending, 1=Approved, 2=Funded, 3=Paid, 4=Rejected
