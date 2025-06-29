@@ -699,13 +699,10 @@ class BankApplication:
         
         print(f"{status_name}:")
         for i, invoice in enumerate(invoices, 1):
-            issue_date = invoice.get('issue_date', 'Unknown')
-            due_date = invoice.get('due_date', 'Unknown')
             print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
-                  f"Issue: {issue_date} | Due: {due_date} | "
                   f"Seller: {invoice.get('seller_name', 'Unknown')} | "
-                  f"Buyer: {invoice.get('buyer_name', 'Unknown')} | "
-                  f"Counterparty: {invoice.get('counterparty_name', 'Unknown')}")
+                  f"Buyer: {invoice.get('buyer_name', 'Unknown')}.  | "
+                  f"Counterparty : {invoice.get('counterparty_name', 'Unknown')}")
             # If counterparty = seller, then buyer uploaded the invoice (seller is the counterparty from buyer's perspective)
             # If counterparty = buyer, then seller uploaded the invoice (buyer is the counterparty from seller's perspective)
             if invoice.get('seller_name', None) == invoice.get('counterparty_name', None):
@@ -755,12 +752,10 @@ class BankApplication:
         
         print(f"Invoice Number: {invoice['number']}")
         print(f"Amount: ${invoice['amount']:,.2f}")
-        print(f"Issue Date: {invoice.get('issue_date', 'Unknown')}")
-        print(f"Due Date: {invoice.get('due_date', 'Unknown')}")
         print(f"Seller: {invoice.get('seller_name', 'Unknown')}")
         print(f"Buyer: {invoice.get('buyer_name', 'Unknown')}")
         print(f"Status: {invoice.get('status', 'Unknown')}")
-        print(f"Counterparty: {invoice.get('counterparty_name', 'Unknown')}")
+        print(f"Counterparty : {invoice.get('counterparty_name', 'Unknown')}")
         
         print("\nAvailable Actions:")
         print("1. Validate Invoice")
@@ -994,8 +989,6 @@ class BankApplication:
             # Determine which party is our customer based on credit facilities
             seller_name = invoice.get('seller_name', 'Unknown')
             buyer_name = invoice.get('buyer_name', 'Unknown')
-            issue_date = invoice.get('issue_date', 'Unknown')
-            due_date = invoice.get('due_date', 'Unknown')
             
             # Check if seller is our customer (has credit facilities)
             seller_is_customer = self.is_organization_our_customer(invoice.get('seller_id'))
@@ -1003,7 +996,7 @@ class BankApplication:
             
             if seller_is_customer and not buyer_is_customer:
                 # Seller is our customer - traditional invoice financing
-                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | Due: {due_date} | "
+                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
                       f"Seller (OUR CUSTOMER): {seller_name} | Buyer: {buyer_name}")
                 print(f"   → We credit {seller_name}'s account after funding")
                 #send notificcation to seller that invoice is successfully funded
@@ -1022,7 +1015,7 @@ class BankApplication:
                
             elif buyer_is_customer and not seller_is_customer:
                 # Buyer is our customer - buyer-led supply chain finance
-                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | Due: {due_date} | "
+                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
                       f"Buyer (OUR CUSTOMER): {buyer_name} | Seller: {seller_name}")
                 print(f"   → {buyer_name} uploaded invoice, {seller_name} decides on early payment discount")
                 print(f"   → If approved: Bank pays {seller_name} (external vendor), {buyer_name} pays bank at maturity")
@@ -1057,7 +1050,7 @@ class BankApplication:
         
             else:
                 # Neither is our customer (shouldn't happen in normal business)
-                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | Due: {due_date} | "
+                print(f"{i}. Invoice #{invoice['number']} | Amount: ${invoice['amount']:,.2f} | "
                       f"Seller: {seller_name} | Buyer: {buyer_name}")
                 print(f"   → WARNING: Neither party appears to be our customer")
         
@@ -1093,27 +1086,8 @@ class BankApplication:
         seller_is_customer = self.is_organization_our_customer(invoice.get('seller_id'))
         buyer_is_customer = self.is_organization_our_customer(invoice.get('buyer_id'))
         
-        # Format dates for display
-        issue_date = invoice.get('issue_date', 'Unknown')
-        due_date = invoice.get('due_date', 'Unknown')
-        
-        # Calculate days to maturity
-        try:
-            if due_date != 'Unknown':
-                from datetime import datetime
-                due_date_obj = datetime.strptime(due_date.split()[0], '%Y-%m-%d') if ' ' in due_date else datetime.strptime(due_date, '%Y-%m-%d')
-                today = datetime.now()
-                days_to_maturity = (due_date_obj - today).days
-                maturity_str = f"{days_to_maturity} days remaining"
-            else:
-                maturity_str = "Unknown"
-        except Exception:
-            maturity_str = "Date format error"
-        
         print(f"Invoice Number: {invoice['number']}")
         print(f"Amount: ${invoice['amount']:,.2f}")
-        print(f"Issue Date: {issue_date}")
-        print(f"Due Date: {due_date} ({maturity_str})")
         print(f"Seller: {seller_name}")
         print(f"Buyer: {buyer_name}")
         
@@ -1790,40 +1764,13 @@ class BankApplication:
                 if not counterparty_name or counterparty_name == "Unknown":
                     counterparty_name = row[6]  # Default to seller name
                 
-                # Format dates nicely if possible
-                issue_date = row[4]
-                due_date = row[5]
-                
-                # Try to format the dates in a more readable way
-                try:
-                    from datetime import datetime
-                    
-                    # Parse and reformat issue date
-                    if issue_date:
-                        if ' ' in issue_date:  # Contains time component
-                            issue_date_obj = datetime.strptime(issue_date.split()[0], '%Y-%m-%d')
-                        else:
-                            issue_date_obj = datetime.strptime(issue_date, '%Y-%m-%d')
-                        issue_date = issue_date_obj.strftime('%Y-%m-%d')
-                    
-                    # Parse and reformat due date
-                    if due_date:
-                        if ' ' in due_date:  # Contains time component
-                            due_date_obj = datetime.strptime(due_date.split()[0], '%Y-%m-%d')
-                        else:
-                            due_date_obj = datetime.strptime(due_date, '%Y-%m-%d')
-                        due_date = due_date_obj.strftime('%Y-%m-%d')
-                except Exception:
-                    # If there's any error, keep the original dates
-                    pass
-                
                 invoices.append({
                     'id': row[0],
                     'number': row[1],
                     'amount': float(row[2]) if row[2] else 0.0,
                     'description': row[3],
-                    'issue_date': issue_date,
-                    'due_date': due_date,
+                    'issue_date': row[4],
+                    'due_date': row[5],
                     'seller_name': row[6],
                     'buyer_name': row[7],
                     'status': row[8],

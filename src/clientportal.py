@@ -486,6 +486,21 @@ class ClientPortal:
                     
                     print(f"{i}. {invoice['number']} | {counterparty} | ${invoice['amount']:,.2f} | {invoice['status']} | Due: {invoice['due_date']} | ({role})")
                 print()
+                
+                # Ask if they want to view details or go back
+                choice = input("Enter invoice number to view details (or 0 to go back): ").strip()
+                
+                if choice == "0":
+                    return
+                    
+                try:
+                    index = int(choice) - 1
+                    if 0 <= index < len(invoices):
+                        self.view_invoice_details(invoices[index])
+                    else:
+                        print("Invalid invoice number.")
+                except ValueError:
+                    print("Invalid input. Please enter a number.")
             else:
                 print("No invoices found.")
             
@@ -493,6 +508,104 @@ class ClientPortal:
             print(f"Error fetching invoices: {e}")
         
         input("\nPress Enter to continue...")
+    
+    def view_invoice_details(self, invoice: dict):
+        """View detailed information about an invoice and provide actions based on status"""
+        self.clear_screen()
+        print(f"INVOICE DETAILS: {invoice['number']}")
+        print("=" * (17 + len(invoice['number'])))
+        print()
+        
+        # Display invoice details
+        print(f"Invoice Number: {invoice['number']}")
+        print(f"Amount: ${invoice['amount']:,.2f}")
+        print(f"Issue Date: {invoice['issue_date']}")
+        print(f"Due Date: {invoice['due_date']}")
+        print(f"Status: {invoice['status']}")
+        print(f"Seller: {invoice['seller_name']}")
+        print(f"Buyer: {invoice['buyer_name']}")
+        
+        # If there's a funded amount and discount rate, show those details
+        if invoice.get('funded_amount'):
+            print(f"Funded Amount: ${invoice['funded_amount']:,.2f}")
+            print(f"Discount Rate: {invoice['discount_rate']}%")
+            print(f"Discount Amount: ${float(invoice['amount']) - float(invoice['funded_amount']):,.2f}")
+        
+        print()
+        
+        # If user is the seller and invoice status is "Pending Seller Approval"
+        if (invoice['seller_id'] == self.current_organization['id'] and 
+            invoice['status_code'] == 6):  # Pending Seller Approval
+            
+            print("This invoice has a pending early payment offer from the bank.")
+            print(f"You can receive ${invoice['funded_amount']:,.2f} now instead of ${invoice['amount']:,.2f} on {invoice['due_date']}.")
+            print(f"Discount rate: {invoice['discount_rate']}% (${float(invoice['amount']) - float(invoice['funded_amount']):,.2f} discount)")
+            
+            choice = input("\nDo you want to: (1) Accept early payment, (2) Reject offer, or (0) Decide later? ")
+            
+            if choice == "1":
+                self.approve_early_payment_offer(invoice)
+            elif choice == "2":
+                self.reject_early_payment_offer(invoice)
+        
+        input("\nPress Enter to continue...")
+    
+    def approve_early_payment_offer(self, invoice: dict):
+        """Approve an early payment offer for a buyer-uploaded invoice"""
+        try:
+            db = Database()
+            
+            # Update invoice status to "Seller Approved" (7)
+            db.cursor.execute("""
+                UPDATE Invoices 
+                SET Status = 7 
+                WHERE Id = ?
+            """, (invoice['id'],))
+            
+            db.connection.commit()
+            
+            # Send notification to bank
+            # In a real system, this would also notify the bank that the seller approved
+            
+            print("Early payment offer accepted successfully!")
+            print("The bank will process your payment shortly.")
+            
+            db.close()
+            
+            # Create accounting entry for audit trail
+            # In a real system, this would create an entry in the accounting system
+            
+            return True
+        except Exception as e:
+            print(f"Error approving early payment offer: {e}")
+            return False
+    
+    def reject_early_payment_offer(self, invoice: dict):
+        """Reject an early payment offer for a buyer-uploaded invoice"""
+        try:
+            db = Database()
+            
+            # In a real system, we would set a different status for rejected offers
+            # For now, we'll just reset it to "Approved" (3) status
+            db.cursor.execute("""
+                UPDATE Invoices 
+                SET Status = 3
+                WHERE Id = ?
+            """, (invoice['id'],))
+            
+            db.connection.commit()
+            
+            # Send notification to bank
+            # In a real system, this would also notify the bank that the seller rejected
+            
+            print("Early payment offer rejected.")
+            print("Invoice will be paid on the original due date.")
+            
+            db.close()
+            return True
+        except Exception as e:
+            print(f"Error rejecting early payment offer: {e}")
+            return False
     
     def check_credit_limits(self):
         """Check credit limits for current organization"""
