@@ -728,16 +728,16 @@ class BankApplication:
         """Get invoices by status"""
         # Map status names to database status codes
         status_map = {
-            "new": 0,                            # Initial status when invoice is first uploaded
-            "validated": 1,                     # Invoice data has been validated
-            "approved": 2,                      # Approved by buyer
-            "funded": 3,                        # Funded by the bank
-            "paid": 4,                          # Invoice has been paid
-            "rejected": 5,                      # Invoice has been rejected
-            "matured": 6,                       # Invoice has reached maturity date
-            "funding_pending_seller": 7,        # Funding sent for Seller Approval
-            "pending_seller_approval": 8,       # Pending Seller approval
-            "seller_approved": 9                # Seller has approved the funding
+            "new": 1,                            # New (applicable to both buyer and seller)
+            "validated": 2,                      # Validated (buyer or seller invoice)
+            "approved": 3,                       # Approved (buyer or seller invoice)
+            "funded": 4,                         # Funded seller invoice (once seller invoice is funded)
+            "funding_pending_seller": 5,         # Funding sent for Seller Approval (for buyer uploaded invoice)
+            "pending_seller_approval": 6,        # Pending Seller approval (for buyer uploaded invoice)
+            "seller_approved": 7,                # Seller Approved (for buyer uploaded invoice)
+            "discounted": 8,                     # Discounted Invoice (payment regardless if buyer or seller)
+            "due": 9,                            # Invoice Due on Maturity Date
+            "settled": 10                        # Invoice fully settled (paid by the buyer)
         }
         
         status_code = status_map.get(status, 0)
