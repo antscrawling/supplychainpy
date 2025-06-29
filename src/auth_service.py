@@ -1,7 +1,13 @@
 import hashlib
 from typing import Optional
 import sqlite3
-from database import Database
+import os
+import sys
+
+# Add the parent directory to the path to import our modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.database import Database
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()

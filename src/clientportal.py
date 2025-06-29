@@ -149,18 +149,18 @@ class ClientPortal:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
-            # Status: 0=Pending, 1=Approved, 2=Funded, 3=Paid, 4=Rejected
+            # Status: 0=New, 1=Validated, 2=Approved, 3=Funded, 4=Paid, 5=Rejected, 6=Funding sent for Seller Approval, 7=Pending Seller approval, 8=Seller Approved
             values = (
                 invoice_data['invoice_number'],
-                invoice_data['issue_date'].strftime('%Y-%m-%d') if hasattr(invoice_data['issue_date'], 'strftime') else invoice_data['issue_date'],
-                invoice_data['due_date'].strftime('%Y-%m-%d') if hasattr(invoice_data['due_date'], 'strftime') else invoice_data['due_date'],
+                invoice_data['issue_date'].strftime('%d-%m-%Y') if hasattr(invoice_data['issue_date'], 'strftime') else invoice_data['issue_date'],
+                invoice_data['due_date'].strftime('%d-%m-%Y') if hasattr(invoice_data['due_date'], 'strftime') else invoice_data['due_date'],
                 str(invoice_data['amount']),  # Amount stored as TEXT in schema
                 invoice_data['description'],
                 invoice_data['seller_id'],
                 invoice_data['buyer_id'],
                 invoice_data.get('counterparty_id', None),  # Set counterparty properly
                 'USD',  # Default currency
-                0,  # Status: Pending
+                0,  # Status: New
                 0,  # BuyerApproved: False
                 1   # SellerAccepted: True (seller uploaded it)
             )
@@ -202,7 +202,18 @@ class ClientPortal:
             db.close()
             
             invoices = []
-            status_map = {0: 'Pending', 1: 'Approved', 2: 'Funded', 3: 'Paid', 4: 'Rejected'}
+            status_map = {
+                0: 'New',
+                1: 'Validated', 
+                2: 'Approved', 
+                3: 'Funded',
+                4: 'Paid', 
+                5: 'Rejected',
+                6: 'Matured',
+                7: 'Funding Sent for Seller Approval',
+                8: 'Pending Seller Approval',
+                9: 'Seller Approved'
+            }
             
             for row in results:
                 invoice = {
@@ -286,20 +297,20 @@ class ClientPortal:
                 description = input("Description: ").strip()
                 
                 # Get invoice start date (issue date)
-                issue_date = input("Invoice Issue Date (YYYY-MM-DD): ").strip()
+                issue_date = input("Invoice Issue Date (DD-MM-YYYY): ").strip()
                 try:
-                    issue_date_obj = datetime.strptime(issue_date, '%Y-%m-%d')
+                    issue_date_obj = datetime.strptime(issue_date, '%d-%m-%Y')
                 except ValueError:
-                    print("Invalid issue date format. Please use YYYY-MM-DD.")
+                    print("Invalid issue date format. Please use DD-MM-YYYY.")
                     input("\nPress Enter to continue...")
                     return
                 
                 # Get due date
-                due_date = input("Due Date (YYYY-MM-DD): ").strip()
+                due_date = input("Due Date (DD-MM-YYYY): ").strip()
                 try:
-                    due_date_obj = datetime.strptime(due_date, '%Y-%m-%d')
+                    due_date_obj = datetime.strptime(due_date, '%d-%m-%Y')
                 except ValueError:
-                    print("Invalid due date format. Please use YYYY-MM-DD.")
+                    print("Invalid due date format. Please use DD-MM-YYYY.")
                     input("\nPress Enter to continue...")
                     return
                 
@@ -735,7 +746,18 @@ class ClientPortal:
             db.close()
             
             invoices = []
-            status_map = {0: 'Pending', 1: 'Approved', 2: 'Funded', 3: 'Paid', 4: 'Rejected'}
+            status_map = {
+                0: 'New',
+                1: 'Validated', 
+                2: 'Approved', 
+                3: 'Funded',
+                4: 'Paid', 
+                5: 'Rejected',
+                6: 'Matured',
+                7: 'Funding Sent for Seller Approval',
+                8: 'Pending Seller Approval',
+                9: 'Seller Approved'
+            }
             
             for row in results:
                 invoice = {

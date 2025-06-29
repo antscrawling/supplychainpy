@@ -6,13 +6,9 @@ Converted from C# BankApplication class
 import os
 import sys
 from typing import Optional, List
-from datetime import datetime, timedelta
-
-# Add the parent directory to the path to import our modules
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from src.database import Database
-from src.auth_service import authenticate, is_authorized
+from datetime import datetime
+from database import Database
+from auth_service import authenticate, is_authorized
 
 
 class BankApplication:
@@ -339,7 +335,7 @@ class BankApplication:
                 return
             
             # Create CreditLimits record
-            timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             credit_limit_query = """
                 INSERT INTO CreditLimits (OrganizationId, MasterLimit, LastReviewDate, NextReviewDate)
@@ -347,7 +343,8 @@ class BankApplication:
             """
             
             # Set next review date to 1 year from now
-            next_review = (datetime.now() + timedelta(days=365)).strftime('%d-%m-%Y %H:%M:%S')
+            from datetime import datetime, timedelta
+            next_review = (datetime.now() + timedelta(days=365)).strftime('%Y-%m-%d %H:%M:%S')
             
             db.cursor.execute(credit_limit_query, (
                 org_id,
@@ -670,7 +667,7 @@ class BankApplication:
         choice = input("\nSelect an option: ").strip()
         
         if choice == "1":
-            self.review_invoices_by_status("new", "New Invoices")
+            self.review_invoices_by_status("uploaded", "New Invoices")
         elif choice == "2":
             self.review_invoices_by_status("validated", "Validated Invoices")
      #  elif choice == "3":
@@ -728,16 +725,16 @@ class BankApplication:
         """Get invoices by status"""
         # Map status names to database status codes
         status_map = {
-            "new": 0,                            # Initial status when invoice is first uploaded
-            "validated": 1,                     # Invoice data has been validated
-            "approved": 2,                      # Approved by buyer
-            "funded": 3,                        # Funded by the bank
-            "paid": 4,                          # Invoice has been paid
-            "rejected": 5,                      # Invoice has been rejected
-            "matured": 6,                       # Invoice has reached maturity date
-            "funding_pending_seller": 7,        # Funding sent for Seller Approval
-            "pending_seller_approval": 8,       # Pending Seller approval
-            "seller_approved": 9                # Seller has approved the funding
+            "uploaded": 0,
+            "validated": 1, 
+            "approved": 2,
+            "funded": 3,
+            "paid": 4,
+            "rejected": 5,
+            "matured": 6,
+            "discount_approved": 7,
+            "buyer_uploaded": 0,  # Same as uploaded but we can filter by buyer
+            "approval_pending": 1  # Same as validated - waiting for buyer approval
         }
         
         status_code = status_map.get(status, 0)
@@ -785,21 +782,11 @@ class BankApplication:
 
     def validate_invoice(self, invoice: dict):
         """Validate an invoice"""
-        
-            # Note: According to business requirements:
-            # - No accounting entry is created during validation
-            # - Only seller uploaded invoices that are funded need accounting entries to pay the seller
-            # - For buyer uploaded invoices, accounting entry only starts when the seller approves
-            #   the invoice for early payment with the quoted discount rate sent by the bank admin
         print(f"\nValidating invoice {invoice['number']}")
 
         # Update status to Validated (1)
         if self.update_invoice_status(invoice['id'], 1):
             print("Invoice validation completed - Status updated to 'Validated'")
-            
-            # Determine if this is a buyer or seller uploaded invoice
-            if invoice.get('seller_name', None) == invoice.get('counterparty_name', None):
-                print("This is a buyer uploaded invoice - Validation step complete")
 
             # Send notification to seller
             stakeholders = self.get_invoice_stakeholders(invoice['id'])
@@ -939,9 +926,8 @@ class BankApplication:
                     db.cursor.execute("UPDATE Invoices SET RejectionReason = ? WHERE Id = ?", (reason, invoice['id']))
                     db.connection.commit()
                     db.close()
-                except Exception as db_error:
-                    print(f"Database error while updating rejection reason: {db_error}")
-                
+                except Exception as e:
+                    print(f"Error updating rejection reason: {e}")
                 
                 # Create rejection accounting entry (for audit trail)
                 stakeholders = self.get_invoice_stakeholders(invoice['id'])
@@ -1158,15 +1144,8 @@ class BankApplication:
                     self.wait_for_enter()
                     return
                 
-                # Update invoice status based on whether this is a buyer or seller uploaded invoice
-                # For seller uploaded invoices: set to Funded (3)
-                # For buyer uploaded invoices: set to Funding Sent for Seller Approval (7)
-                new_status = 3  # Default to Funded
-                if invoice.get('seller_name', None) == invoice.get('counterparty_name', None):
-                    # Buyer uploaded invoice - set to Funding Sent for Seller Approval
-                    new_status = 7
-                
-                if self.update_invoice_status(invoice['id'], new_status):
+                # Update invoice status to Funded (3) and record funding details
+                if self.update_invoice_status(invoice['id'], 3):
                     # Update funding details in database
                     db = Database()
                     try:
@@ -1179,24 +1158,19 @@ class BankApplication:
                         db.close()
                         
                         print("\nFunding processed successfully!")
-                        if new_status == 3:
-                            print("Invoice status updated to 'Funded'")
-                        else:
-                            print("Invoice status updated to 'Funding Sent for Seller Approval'")
+                        print("Invoice status updated to 'Funded'")
                         #if buyer uploaded send notification with ActionRequired=True (for approval)
                         stakeholders = self.get_invoice_stakeholders(invoice['id'])
                         if invoice.get('seller_name', None) == invoice.get('counterparty_name', None):
-                            # Buyer uploaded invoice - notify seller for approval
+                            # Seller uploaded, no action required
                             if stakeholders.get('seller_user_id'):
-                                seller_message = f"Early payment opportunity: Invoice #{invoice['number']} from {invoice.get('buyer_name', 'Unknown')} has been approved for funding at a discount rate of {final_rate:.2f}%. If you accept, you will receive ${funded_amount:,.2f} now instead of ${invoice['amount']:,.2f} at maturity."
-                                self.send_notification(stakeholders['seller_user_id'], seller_message, invoice['id'], "Early Payment Opportunity", "Action", True)
-                                print(f"Early payment offer notification sent to seller: {stakeholders.get('seller_name', 'Unknown')}")
+                                message = f"Invoice {invoice['number']} has been funded and ${funded_amount:,.2f} has been credited to your account."
+                                self.send_notification(stakeholders['seller_user_id'], message, invoice['id'], "Invoice Funded", "Success", False)
                         else:
-                            # Seller uploaded invoice - notify of successful funding
+                            # Buyer uploaded, seller needs to approve/acknowledge
                             if stakeholders.get('seller_user_id'):
-                                seller_message = f"Invoice #{invoice['number']} has been funded successfully. ${funded_amount:,.2f} has been credited to your account."
-                                self.send_notification(stakeholders['seller_user_id'], seller_message, invoice['id'], "Invoice Funded", "Success", False)
-                                print(f"Funding notification sent to seller: {stakeholders.get('seller_name', 'Unknown')}")
+                                message = f"Invoice {invoice['number']} has been funded. Please acknowledge receipt of funds (${funded_amount:,.2f})."
+                                self.send_notification(stakeholders['seller_user_id'], message, invoice['id'], "Action Required: Acknowledge Funding", "Action", True)
                         #if seller uploaded send notification with ActionRequired=False 
                         
                         # Update credit utilization for both seller and buyer
@@ -1241,7 +1215,7 @@ class BankApplication:
         """Record funding transaction"""
         try:
             db = Database()
-            timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             # Insert transaction record
             query = """
@@ -1378,9 +1352,9 @@ class BankApplication:
                 self.wait_for_enter()
                 return
             
-            payment_date = input("Enter payment date (DD-MM-YYYY) or press Enter for today: ").strip()
+            payment_date = input("Enter payment date (YYYY-MM-DD) or press Enter for today: ").strip()
             if not payment_date:
-                payment_date = datetime.now().strftime('%d-%m-%Y')
+                payment_date = datetime.now().strftime('%Y-%m-%d')
             
             print(f"\nPayment Details:")
             print(f"Amount: ${payment_amount:,.2f}")
@@ -1394,7 +1368,7 @@ class BankApplication:
                     # Record payment transaction
                     try:
                         db = Database()
-                        timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+                        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         
                         # Insert payment transaction
                         query = """
@@ -1628,13 +1602,12 @@ class BankApplication:
         try:
             db = Database()
             
-            # Status mapping: 0=New, 1=Validated, 2=Approved, 3=Funded, 4=Paid, 5=Rejected, 6=Matured, 
-            # 7=Funding_Pending_Seller, 8=Pending_Seller_Approval, 9=Seller_Approved
+            # Status mapping: 0=Uploaded, 1=Validated, 2=Approved, 3=Funded, 4=Paid, 5=Rejected, 6=Matured, 7=Discount_Approved
             query = "UPDATE Invoices SET Status = ? WHERE Id = ?"
             db.cursor.execute(query, (new_status, invoice_id))
             
             # Add status change timestamp based on status
-            timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             if new_status == 3:  # Funded
                 db.cursor.execute("UPDATE Invoices SET FundingDate = ? WHERE Id = ?", (timestamp, invoice_id))
@@ -1846,6 +1819,16 @@ class BankApplication:
             print(f"Accounting entry created: {trans_ref}")
             return True
             
+        except Exception as e:
+            print(f"Error creating accounting entry: {e}")
+            return False
+
+    def create_journal_line(self, db, journal_entry_id: int, account_id: int, debit_amount: str, credit_amount: str, description: str, org_id: int = None):
+        """Create individual journal entry line"""
+        line_query = """
+            INSERT INTO JournalEntryLines (JournalEntryId, AccountId, DebitAmount, CreditAmount, Description, OrganizationId)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """
         except Exception as e:
             print(f"Error creating accounting entry: {e}")
             return False
